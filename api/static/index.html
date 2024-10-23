@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Downloader</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .loading {
+            position: relative;
+        }
+        .loading:after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            top: 50%;
+            left: 50%;
+            margin: -10px 0 0 -10px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8">YouTube Downloader</h1>
+        
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="url">
+                    YouTube URL
+                </label>
+                <input type="text" id="url" 
+                       class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                       placeholder="https://www.youtube.com/watch?v=...">
+                <button id="checkUrl" 
+                        class="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full">
+                    Check Video
+                </button>
+            </div>
+
+            <div id="videoInfo" class="hidden">
+                <div class="border-t pt-4">
+                    <img id="thumbnail" class="w-full rounded-lg mb-4" src="" alt="Video thumbnail">
+                    <h2 id="videoTitle" class="text-xl font-bold mb-2"></h2>
+                    <p id="duration" class="text-gray-600 mb-4"></p>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            Download Type
+                        </label>
+                        <div class="flex space-x-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="downloadType" value="video" checked
+                                       class="form-radio text-blue-500">
+                                <span class="ml-2">Video (MP4)</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="downloadType" value="audio"
+                                       class="form-radio text-blue-500">
+                                <span class="ml-2">Audio (MP3)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="resolutionSelector" class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">
+                            Select Resolution
+                        </label>
+                        <select id="resolution" 
+                                class="block w-full bg-white border border-gray-400 hover:border-gray-500 px-4 py-2 rounded shadow">
+                        </select>
+                    </div>
+
+                    <button id="downloadBtn" 
+                            class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full">
+                        Download
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlInput = document.getElementById('url');
+            const checkUrlBtn = document.getElementById('checkUrl');
+            const videoInfo = document.getElementById('videoInfo');
+            const videoTitle = document.getElementById('videoTitle');
+            const duration = document.getElementById('duration');
+            const thumbnail = document.getElementById('thumbnail');
+            const resolutionSelect = document.getElementById('resolution');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const resolutionSelector = document.getElementById('resolutionSelector');
+            const downloadTypeRadios = document.getElementsByName('downloadType');
+
+            let currentVideoData = null;
+
+            checkUrlBtn.addEventListener('click', async () => {
+                const url = urlInput.value.trim();
+                if (!url) {
+                    alert('Please enter a YouTube URL');
+                    return;
+                }
+
+                checkUrlBtn.classList.add('loading');
+                checkUrlBtn.disabled = true;
+
+                try {
+                    const response = await fetch('/api/info', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ url })
+                    });
+
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    currentVideoData = data;
+                    displayVideoInfo(data);
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                } finally {
+                    checkUrlBtn.classList.remove('loading');
+                    checkUrlBtn.disabled = false;
+                }
+            });
+
+            function displayVideoInfo(data) {
+                videoTitle.textContent = data.title;
+                const minutes = Math.floor(data.duration / 60);
+                const seconds = data.duration % 60;
+                duration.textContent = `Duration: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                thumbnail.src = data.thumbnail;
+                
+                // Clear and populate resolution options
+                resolutionSelect.innerHTML = '';
+                data.formats.forEach(format => {
+                    const option = document.createElement('option');
+                    option.value = format.height;
+                    option.textContent = `${format.height}p - ${format.filesize}`;
+                    resolutionSelect.appendChild(option);
+                });
+
+                videoInfo.classList.remove('hidden');
+            }
+
+            // Handle download type change
+            downloadTypeRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    resolutionSelector.style.display = e.target.value === 'video' ? 'block' : 'none';
+                });
+            });
+
+            downloadBtn.addEventListener('click', async () => {
+                const url = urlInput.value.trim();
+                const downloadType = document.querySelector('input[name="downloadType"]:checked').value;
+                const resolution = resolutionSelect.value;
+
+                downloadBtn.classList.add('loading');
+                downloadBtn.disabled = true;
+
+                try {
+                    const response = await fetch('/api/download', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            url,
+                            type: downloadType,
+                            resolution: downloadType === 'video' ? resolution : null
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    // Trigger file download
+                    window.location.href = `/downloads/${data.filename}`;
+                    alert('Download completed!');
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                } finally {
+                    downloadBtn.classList.remove('loading');
+                    downloadBtn.disabled = false;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
